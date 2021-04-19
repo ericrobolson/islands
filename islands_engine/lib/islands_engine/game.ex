@@ -1,6 +1,8 @@
 defmodule IslandsEngine.Game do
-  alias IslandsEngine.{Board, Guesses, Rules}
+  alias IslandsEngine.{Board, Coordinate, Guesses, Island, Rules}
   use GenServer
+
+  @players [:player1, :player2]
 
   def start_link(name) when is_binary(name) do
     GenServer.start_link(__MODULE__, name, [])
@@ -26,6 +28,35 @@ defmodule IslandsEngine.Game do
     end
   end
 
+  def handle_call({:position_island, player, key, row, col}, _from, state_data) do
+    board = player_board(state_data, player)
+
+    with {:ok, rules} <- Rules.check(state_data.rules, {:position_islands, player}),
+         {:ok, coordinate} <- Coordinate.new(row, col),
+         {:ok, island} <- Island.new(key, coordinate),
+         %{} = board <- Board.position_island(board, key, island) do
+      state_data
+      |> update_board(player, board)
+      |> update_rules(rules)
+      |> reply_success(:ok)
+    else
+      :error -> {:reply, :error, state_data}
+      {:error, :invalid_coordinate} -> {:reply, {:error, :invalid_coordinate}, state_data}
+      {:error, :invalid_island_type} -> {:reply, {:error, :invalid_island_type}, state_data}
+    end
+  end
+
+  def position_island(game, player, key, row, col) when player in @players,
+    do: GenServer.call(game, {:position_island, player, key, row, col})
+
+  defp player_board(state_data, player) do
+    Map.get(state_data, player).board
+  end
+
+  defp update_board(state_data, player, board) do
+    Map.update!(state_data, player, fn player -> %{player | board: board} end)
+  end
+
   defp update_player2_name(state_data, name) do
     put_in(state_data.player2.name, name)
   end
@@ -36,26 +67,5 @@ defmodule IslandsEngine.Game do
 
   defp reply_success(state_data, reply) do
     {:reply, reply, state_data}
-  end
-
-  def demo_call(game) do
-    GenServer.call(game, :demo_call)
-  end
-
-  def demo_cast(pid, new_value) do
-    GenServer.cast(pid, {:demo_cast, new_value})
-  end
-
-  def handle_info(:first, state) do
-    IO.puts("this message has been handled by handle_info/2 matcing on :first")
-    {:noreply, state}
-  end
-
-  def handle_call(:demo_call, _from, state) do
-    {:reply, state, state}
-  end
-
-  def handle_cast({:demo_cast, new_value}, state) do
-    {:noreply, Map.put(state, :test, new_value)}
   end
 end
